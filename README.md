@@ -15,7 +15,10 @@ conversacional de IA.
 │   ├── limpieza.py                     # Fase 1: preparacion de datos
 │   ├── probar_conexion.py              # Fase 3: diagnostico de conexion
 │   ├── db.py                           # Fase 4: capa de acceso a los datos
-│   └── visualizaciones.py              # Puntos 2c y 6: genera ocho graficas
+│   ├── visualizaciones.py              # Puntos 2c y 6: genera ocho graficas
+│   └── mcp_server.py                    # MCP Server: publica los puntos 2 a 6
+├── tests/
+│   └── probar_mcp.py                    # prueba de integracion del MCP
 ├── scripts/
 │   ├── modelo.sql                      # Fase 2: DDL de la base de datos
 │   ├── carga_1_crear_staging.sql       # Fase 3: carga manual, paso 1 de 3
@@ -44,6 +47,7 @@ cp .env.example .env             # y rellenar con las credenciales de Supabase
 python src/limpieza.py           # genera ventas_limpias.csv y docs/perfilado.md
 python src/probar_conexion.py    # verifica que la conexion a Supabase funcione
 python src/visualizaciones.py    # genera las ocho graficas desde Supabase
+python tests/probar_mcp.py       # comprueba el servidor y sus herramientas
 ```
 
 Luego, en el SQL Editor de Supabase (o DataGrip), ejecutar `scripts/modelo.sql`
@@ -188,3 +192,91 @@ la cantidad de archivos con:
 
 El resultado esperado es `8`. Tambien se deben abrir las imagenes y comprobar
 que no existan etiquetas recortadas, leyendas superpuestas ni texto ilegible.
+
+## MCP Server
+
+El archivo `src/mcp_server.py` publica mediante Model Context Protocol los
+resultados de los puntos 2 a 6. Es una capa de solo lectura: reutiliza las
+funciones de `src/db.py`, no contiene nuevas consultas SQL y no modifica datos.
+
+Se usa el transporte `stdio`. El cliente, posteriormente Google ADK, inicia el
+servidor como un subproceso y se comunica por la entrada y salida estandar. Por
+eso no se configura un puerto, una URL de servidor MCP ni autenticacion MCP para
+la ejecucion local.
+
+### Requisitos
+Python 3.10 o posterior.
+
+### Herramientas publicadas
+
+| Punto | Herramienta MCP | Contenido |
+|---|---|---|
+| 2a | `obtener_datos_ventas` | Dataset paginado, con un maximo de 200 filas por llamada |
+| 2b | `obtener_estadisticas_basicas` | Media, mediana, moda, desviacion y rango |
+| 2c | `obtener_distribuciones_ventas` | Distribuciones por mes, pago, navegador, boletin y vale |
+| 3a | `analizar_ventas_mensuales` | Ventas mensuales y meses extremos |
+| 3b | `analizar_popularidad_navegadores` | Uso por canal y navegadores extremos |
+| 3c | `analizar_metodos_pago` | Desglose de pagos y efectivo contra tarjetas |
+| 3d | `analizar_boletin_vale_por_mes` | Comportamiento mensual y meses maximos |
+| 4a | `segmentar_clientes_por_edad` | Patrones por rango de edad |
+| 4b | `comparar_comportamiento_por_genero` | Patrones por genero |
+| 4c | `segmentar_clientes_por_boletin_vale` | Patrones por boletin y vale |
+| 5a | `analizar_correlacion_edad_venta` | Pearson entre edad y venta total |
+| 5b | `analizar_asociacion_genero_metodo_pago` | Chi-cuadrado y V de Cramer |
+| 5c | `analizar_asociacion_boletin_vale` | Chi-cuadrado y V de Cramer |
+| 6 | `listar_visualizaciones` | Catalogo y disponibilidad de las ocho graficas |
+| 6 | `obtener_visualizacion` | Una grafica PNG como contenido de imagen MCP |
+
+### Comprobacion automatica
+
+La siguiente prueba usa un cliente MCP en memoria. Descubre las herramientas a
+traves del protocolo y llama a las quince, incluida una visualizacion:
+
+```bash
+python tests/probar_mcp.py
+```
+
+Debe terminar con:
+
+```text
+OK - todas las herramientas MCP respondieron correctamente
+```
+
+Esta prueba si consulta Supabase. No inicia puertos ni utiliza un modelo de IA.
+
+### Ejecucion directa
+
+```bash
+python src/mcp_server.py
+```
+
+Al ejecutarlo directamente la terminal queda esperando sin mostrar un menu. Es
+el comportamiento normal de un servidor `stdio`, espera que un cliente MCP le
+envie mensajes. Se detiene con `Ctrl+C`.
+
+Para inspeccion interactiva se puede usar de manera opcional el Inspector del
+SDK:
+
+```bash
+mcp dev src/mcp_server.py
+```
+
+El Inspector puede requerir Node.js y `npx`. No es necesario para la prueba
+automatizada ni para la integracion con Google ADK.
+
+### Contrato para la integracion con Google ADK
+
+El agente debe iniciar el servidor con el Python del mismo entorno virtual y
+la ruta absoluta de `src/mcp_server.py`. En Windows, los parametros equivalen a:
+
+```python
+StdioServerParameters(
+    command=r"C:\ruta\al\proyecto\.venv\Scripts\python.exe",
+    args=[r"C:\ruta\al\proyecto\src\mcp_server.py"],
+)
+```
+
+No es necesario pasar `DATABASE_URL` en esos parametros porque `src/config.py`
+carga el `.env` utilizando una ruta absoluta basada en la raiz del proyecto.
+El servidor no debe imprimir mensajes propios en la salida estandar, pues ese
+canal esta reservado para el protocolo MCP.
