@@ -269,6 +269,21 @@ def boletin_vale_por_mes() -> pd.DataFrame:
     return _consultar(sql)
 
 
+def meses_maximos_boletin_vale() -> dict:
+    """Meses con mayor cantidad de compras asociadas a boletin y vale."""
+    datos = boletin_vale_por_mes()
+
+    fila_boletin = datos.loc[datos["compras_con_boletin"].idxmax()]
+    fila_vale = datos.loc[datos["compras_con_vale"].idxmax()]
+
+    return {
+        "mes_mayor_boletin": str(fila_boletin["mes_nombre"]),
+        "compras_con_boletin": int(fila_boletin["compras_con_boletin"]),
+        "mes_mayor_vale": str(fila_vale["mes_nombre"]),
+        "compras_con_vale": int(fila_vale["compras_con_vale"]),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Punto 4a - Segmentacion de clientes por edad
 # ---------------------------------------------------------------------------
@@ -429,6 +444,7 @@ if __name__ == "__main__":
     for etiqueta, fn in [
         ("3a  meses_extremos", meses_extremos),
         ("3b  navegadores_extremos", navegadores_extremos),
+        ("3d  meses_maximos_boletin_vale", meses_maximos_boletin_vale),
         ("5a  correlacion_venta_edad", correlacion_venta_edad),
         ("5b  correlacion_genero_metodo_pago", correlacion_genero_metodo_pago),
         ("5c  correlacion_boletin_vale", correlacion_boletin_vale),
